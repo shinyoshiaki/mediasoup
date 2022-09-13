@@ -5,6 +5,7 @@
 #include "RTC/Codecs/H264.hpp"
 #include "RTC/Codecs/H264_SVC.hpp"
 #include "RTC/Codecs/Opus.hpp"
+#include "RTC/Codecs/Opus_RED.hpp"
 #include "RTC/Codecs/PayloadDescriptorHandler.hpp"
 #include "RTC/Codecs/VP8.hpp"
 #include "RTC/Codecs/VP9.hpp"
@@ -90,6 +91,12 @@ namespace RTC
 							case RTC::RtpCodecMimeType::Subtype::MULTIOPUS:
 							{
 								RTC::Codecs::Opus::ProcessRtpPacket(packet);
+
+								break;
+							}
+							case RTC::RtpCodecMimeType::Subtype::RED:
+							{
+								RTC::Codecs::Opus_RED::ProcessRtpPacket(packet);
 
 								break;
 							}
@@ -203,6 +210,8 @@ namespace RTC
 							case RTC::RtpCodecMimeType::Subtype::OPUS:
 							case RTC::RtpCodecMimeType::Subtype::MULTIOPUS:
 								return new RTC::Codecs::Opus::EncodingContext(params);
+							case RTC::RtpCodecMimeType::Subtype::RED:
+								return new RTC::Codecs::Opus_RED::EncodingContext(params);
 							default:
 								return nullptr;
 						}
