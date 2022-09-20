@@ -16,12 +16,6 @@ namespace RTC
 
 			std::unique_ptr<PayloadDescriptor> payloadDescriptor(new PayloadDescriptor());
 
-			// libopus generates a single byte payload (TOC, no frames) to generate DTX.
-			if (len == 1)
-			{
-				payloadDescriptor->isDtx = true;
-			}
-
 			return payloadDescriptor.release();
 		}
 
@@ -46,7 +40,6 @@ namespace RTC
 			MS_TRACE();
 
 			MS_DUMP("<PayloadDescriptor>");
-			MS_DUMP("  isDtx : %s", this->isDtx ? "true" : "false");
 			MS_DUMP("</PayloadDescriptor>");
 		}
 
@@ -65,14 +58,7 @@ namespace RTC
 
 			auto* context = static_cast<RTC::Codecs::Opus_RED::EncodingContext*>(encodingContext);
 
-			if (this->payloadDescriptor->isDtx && context->GetIgnoreDtx())
-			{
-				return false;
-			}
-			else
-			{
-				return true;
-			}
+			return true;
 		};
 	} // namespace Codecs
 } // namespace RTC

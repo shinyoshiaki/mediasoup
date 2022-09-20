@@ -19,9 +19,6 @@ namespace RTC
 				~PayloadDescriptor() = default;
 
 				void Dump() const override;
-
-				// Parsed values.
-				bool isDtx{ false };
 			};
 
 		public:
