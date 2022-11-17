@@ -1,8 +1,9 @@
+#include <cstddef>
 #define MS_CLASS "RTC::RtpPacket"
-// #define MS_LOG_DEV_LEVEL 3
+#define MS_LOG_DEV_LEVEL 3
 
-#include "RTC/RtpPacket.hpp"
 #include "Logger.hpp"
+#include "RTC/RtpPacket.hpp"
 #include <cstring>  // std::memcpy(), std::memmove(), std::memset()
 #include <iterator> // std::ostream_iterator
 #include <sstream>  // std::ostringstream
@@ -172,6 +173,7 @@ namespace RTC
 		{
 			MS_DUMP("  RFC5285 ext style : Two-Bytes Header");
 		}
+		MS_DUMP("if (HasOneByteExtensions() || HasTwoBytesExtensions())");
 		if (HasOneByteExtensions() || HasTwoBytesExtensions())
 		{
 			std::vector<std::string> extIds;
@@ -179,9 +181,19 @@ namespace RTC
 
 			if (HasOneByteExtensions())
 			{
+				MS_DUMP("HasOneByteExtensions");
 				for (const auto& extension : this->oneByteExtensions)
 				{
-					extIds.push_back(std::to_string(extension->id));
+					MS_DUMP("to_string %d", extension->id);
+					try
+					{
+						extIds.push_back(std::to_string(extension->id));
+					}
+					catch (const std::exception& e)
+					{
+						std::cerr << e.what() << '\n';
+						MS_DEBUG_DEV("error %s", e.what());
+					}
 				}
 			}
 			else
@@ -193,6 +205,7 @@ namespace RTC
 					extIds.push_back(std::to_string(kv.first));
 				}
 			}
+			MS_DUMP("!!");
 
 			if (!extIds.empty())
 			{
@@ -202,7 +215,9 @@ namespace RTC
 
 				MS_DUMP("  RFC5285 ext ids   : %s", extIdsStream.str().c_str());
 			}
+			MS_DUMP("!!!");
 		}
+		MS_DUMP("if (this->midExtensionId != 0u)");
 		if (this->midExtensionId != 0u)
 		{
 			std::string mid;
@@ -213,6 +228,7 @@ namespace RTC
 				  "  mid               : extId:%" PRIu8 ", value:'%s'", this->midExtensionId, mid.c_str());
 			}
 		}
+		MS_DUMP("if (this->ridExtensionId != 0u)");
 		if (this->ridExtensionId != 0u)
 		{
 			std::string rid;
@@ -223,6 +239,7 @@ namespace RTC
 				  "  rid               : extId:%" PRIu8 ", value:'%s'", this->ridExtensionId, rid.c_str());
 			}
 		}
+		MS_DUMP("this->rridExtensionId != 0u");
 		if (this->rridExtensionId != 0u)
 		{
 			std::string rid;
@@ -233,10 +250,12 @@ namespace RTC
 				  "  rrid              : extId:%" PRIu8 ", value:'%s'", this->rridExtensionId, rid.c_str());
 			}
 		}
+		MS_DUMP("if (this->absSendTimeExtensionId != 0u)");
 		if (this->absSendTimeExtensionId != 0u)
 		{
 			MS_DUMP("  absSendTime       : extId:%" PRIu8, this->absSendTimeExtensionId);
 		}
+		MS_DUMP("if (this->transportWideCc01ExtensionId != 0u)");
 		if (this->transportWideCc01ExtensionId != 0u)
 		{
 			uint16_t wideSeqNumber;
@@ -249,15 +268,18 @@ namespace RTC
 				  wideSeqNumber);
 			}
 		}
+		MS_DUMP("if (this->frameMarking07ExtensionId != 0u)");
 		// Remove once it becomes RFC.
 		if (this->frameMarking07ExtensionId != 0u)
 		{
 			MS_DUMP("  frameMarking07    : extId:%" PRIu8, this->frameMarking07ExtensionId);
 		}
+		MS_DUMP("if (this->frameMarkingExtensionId != 0u)");
 		if (this->frameMarkingExtensionId != 0u)
 		{
 			MS_DUMP("  frameMarking      : extId:%" PRIu8, this->frameMarkingExtensionId);
 		}
+		MS_DUMP("if (this->ssrcAudioLevelExtensionId != 0u)");
 		if (this->ssrcAudioLevelExtensionId != 0u)
 		{
 			uint8_t volume;
@@ -272,6 +294,7 @@ namespace RTC
 				  voice ? "true" : "false");
 			}
 		}
+		MS_DUMP("if (this->videoOrientationExtensionId != 0u)");
 		if (this->videoOrientationExtensionId != 0u)
 		{
 			bool camera;
@@ -788,6 +811,170 @@ namespace RTC
 		}
 
 		return true;
+	}
+
+	RtpPacket* RtpPacket::RedDecode()
+	{
+		size_t kRedLastHeaderLength = 1;
+		size_t kRedHeaderLength     = 4;
+
+		const uint8_t* payload_ptr = this->payload;
+
+		struct RedHeader
+		{
+			uint8_t payload_type;
+			uint32_t timestamp;
+			size_t payload_length;
+			bool last;
+		};
+
+		std::vector<RedHeader> new_headers;
+		bool last_block   = false;
+		size_t sum_length = 0;
+
+		MS_DEBUG_DEV("RedDecode");
+
+		while (!last_block)
+		{
+			RedHeader new_header;
+			last_block = ((*payload_ptr & 0x80) == 0);
+
+			new_header.payload_type = payload_ptr[0] & 0x7F;
+			if (last_block)
+			{
+				// No more header data to read.
+				sum_length += kRedLastHeaderLength; // Account for RED header size.
+				new_header.timestamp      = this->header->timestamp;
+				new_header.payload_length = this->payloadLength - sum_length;
+				new_header.last           = true;
+				payload_ptr += kRedLastHeaderLength; // Advance to first payload byte.
+			}
+			else
+			{
+				// Bits 8 through 21 are timestamp offset.
+				int timestamp_offset = (payload_ptr[1] << 6) + ((payload_ptr[2] & 0xFC) >> 2);
+				new_header.timestamp = this->header->timestamp - timestamp_offset;
+				// Bits 22 through 31 are payload length.
+				new_header.payload_length = ((payload_ptr[2] & 0x03) << 8) + payload_ptr[3];
+				new_header.last           = false;
+
+				sum_length += new_header.payload_length;
+				sum_length += kRedHeaderLength; // Account for RED header size.
+
+				payload_ptr += kRedHeaderLength; // Advance to next RED header.
+			}
+			// Store in new list of packets.
+			if (new_header.payload_length > 0)
+			{
+				new_headers.push_back(new_header);
+				MS_DEBUG_DEV(
+				  "red header %d %ld %d",
+				  new_header.payload_type,
+				  new_header.timestamp,
+				  new_header.payload_length);
+			}
+		}
+
+		const auto& new_header = new_headers[1];
+		MS_DEBUG_DEV(
+		  "last red header %d %ld %d",
+		  new_header.payload_type,
+		  new_header.timestamp,
+		  new_header.payload_length);
+		size_t newPayload_length = new_header.payload_length;
+
+		auto* buffer = new uint8_t[MtuSize + 100];
+		auto* ptr    = const_cast<uint8_t*>(buffer);
+
+		size_t numBytes{ 0 };
+
+		// Copy the minimum header.
+		numBytes = HeaderSize;
+		std::memcpy(ptr, GetData(), numBytes);
+
+		auto* newHeader = reinterpret_cast<Header*>(ptr);
+		ptr += numBytes;
+
+		// newHeader->timestamp   = this->header->timestamp;
+		newHeader->payloadType = new_header.payload_type;
+
+		// Copy CSRC list.
+		if (this->csrcList != nullptr)
+		{
+			numBytes = this->header->csrcCount * sizeof(this->header->ssrc);
+			std::memcpy(ptr, this->csrcList, numBytes);
+
+			ptr += numBytes;
+		}
+
+		// Copy header extension.
+		HeaderExtension* newHeaderExtension{ nullptr };
+
+		if (this->headerExtension != nullptr)
+		{
+			numBytes = 4 + GetHeaderExtensionLength();
+			std::memcpy(ptr, this->headerExtension, numBytes);
+
+			// Set the header extension pointer.
+			newHeaderExtension = reinterpret_cast<HeaderExtension*>(ptr);
+
+			ptr += numBytes;
+		}
+
+		// Copy payload.
+
+		if (this->payloadLength != 0u)
+		{
+			numBytes = this->payloadLength;
+			std::memcpy(ptr, this->payload, numBytes);
+		}
+
+		for (auto header : new_headers)
+		{
+			if (header.last == false)
+			{
+				ptr += kRedHeaderLength;
+				ptr += header.payload_length;
+			}
+			else
+			{
+				ptr += kRedLastHeaderLength;
+			}
+		}
+
+		auto newSize =
+		  this->size - this->payloadLength + newPayload_length - size_t{ this->payloadPadding };
+		MS_DEBUG_DEV(
+		  "paddingLength %d , payloadLength %d , newPayload_length %d, old rtp size %d new rtp size %d",
+		  size_t{ this->payloadPadding },
+		  this->payloadLength,
+		  newPayload_length,
+		  this->size,
+		  newSize);
+
+		// Create the new RtpPacket instance and return it.
+		auto redPacket =
+		  new RtpPacket(newHeader, newHeaderExtension, ptr, newPayload_length, 0u, newSize);
+
+		// Keep already set extension ids.
+		redPacket->midExtensionId               = this->midExtensionId;
+		redPacket->ridExtensionId               = this->ridExtensionId;
+		redPacket->rridExtensionId              = this->rridExtensionId;
+		redPacket->absSendTimeExtensionId       = this->absSendTimeExtensionId;
+		redPacket->transportWideCc01ExtensionId = this->transportWideCc01ExtensionId;
+		redPacket->frameMarking07ExtensionId    = this->frameMarking07ExtensionId; // Remove once RFC.
+		redPacket->frameMarkingExtensionId      = this->frameMarkingExtensionId;
+		redPacket->ssrcAudioLevelExtensionId    = this->ssrcAudioLevelExtensionId;
+		redPacket->videoOrientationExtensionId  = this->videoOrientationExtensionId;
+		// Assign the payload descriptor handler.
+		redPacket->payloadDescriptorHandler = this->payloadDescriptorHandler;
+		// Store allocated buffer.
+		redPacket->buffer = buffer;
+
+		redPacket->SetPayloadPaddingFlag(false);
+		redPacket->SetMarker(true);
+
+		return redPacket;
 	}
 
 	bool RtpPacket::ProcessPayload(RTC::Codecs::EncodingContext* context, bool& marker)
