@@ -757,6 +757,11 @@ export function getProducerRtpParametersMapping(
 			});
 	}
 
+	if (params.codecs[0].mimeType==='audio/red')
+	{
+		rtpMapping.codecs[1].mappedPayloadType=rtpMapping.codecs[1].payloadType;
+	}
+
 	// Generate encodings mapping.
 	let mappedSsrc = utils.generateRandomNumber();
 
@@ -807,8 +812,15 @@ export function getConsumableRtpParameters(
 			.find((entry) => entry.payloadType === codec.payloadType)!
 			.mappedPayloadType;
 
-		const matchedCapCodec = caps.codecs!
+		let matchedCapCodec = caps.codecs!
 			.find((capCodec) => capCodec.preferredPayloadType === consumableCodecPt)!;
+		
+		if (!matchedCapCodec)
+		{
+			matchedCapCodec=
+				caps.codecs?.find((cap) => cap.mimeType===codec.mimeType) as RtpCodecCapability;
+			matchedCapCodec.preferredPayloadType=codec.payloadType;
+		}
 
 		const consumableCodec: RtpCodecParameters =
 		{

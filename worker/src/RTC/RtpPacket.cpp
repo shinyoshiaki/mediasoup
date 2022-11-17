@@ -881,100 +881,44 @@ namespace RTC
 		  new_header.payload_type,
 		  new_header.timestamp,
 		  new_header.payload_length);
-		size_t newPayload_length = new_header.payload_length;
 
-		auto* buffer = new uint8_t[MtuSize + 100];
-		auto* ptr    = const_cast<uint8_t*>(buffer);
+		SetPayloadType(new_header.payload_type);
 
-		size_t numBytes{ 0 };
-
-		// Copy the minimum header.
-		numBytes = HeaderSize;
-		std::memcpy(ptr, GetData(), numBytes);
-
-		auto* newHeader = reinterpret_cast<Header*>(ptr);
-		ptr += numBytes;
-
-		// newHeader->timestamp   = this->header->timestamp;
-		newHeader->payloadType = new_header.payload_type;
-
-		// Copy CSRC list.
-		if (this->csrcList != nullptr)
-		{
-			numBytes = this->header->csrcCount * sizeof(this->header->ssrc);
-			std::memcpy(ptr, this->csrcList, numBytes);
-
-			ptr += numBytes;
-		}
-
-		// Copy header extension.
-		HeaderExtension* newHeaderExtension{ nullptr };
-
-		if (this->headerExtension != nullptr)
-		{
-			numBytes = 4 + GetHeaderExtensionLength();
-			std::memcpy(ptr, this->headerExtension, numBytes);
-
-			// Set the header extension pointer.
-			newHeaderExtension = reinterpret_cast<HeaderExtension*>(ptr);
-
-			ptr += numBytes;
-		}
-
-		// Copy payload.
-
-		if (this->payloadLength != 0u)
-		{
-			numBytes = this->payloadLength;
-			std::memcpy(ptr, this->payload, numBytes);
-		}
-
+		auto payloadOffset = 0u;
 		for (auto header : new_headers)
 		{
 			if (header.last == false)
 			{
-				ptr += kRedHeaderLength;
-				ptr += header.payload_length;
+				payloadOffset += kRedHeaderLength;
+				payloadOffset += header.payload_length;
 			}
 			else
 			{
-				ptr += kRedLastHeaderLength;
+				payloadOffset += kRedLastHeaderLength;
 			}
 		}
 
-		auto newSize =
-		  this->size - this->payloadLength + newPayload_length - size_t{ this->payloadPadding };
-		MS_DEBUG_DEV(
-		  "paddingLength %d , payloadLength %d , newPayload_length %d, old rtp size %d new rtp size %d",
-		  size_t{ this->payloadPadding },
-		  this->payloadLength,
-		  newPayload_length,
-		  this->size,
-		  newSize);
+		// Shift the payload to its original place.
+		std::memmove(this->payload, this->payload + payloadOffset, this->payloadLength - payloadOffset);
 
-		// Create the new RtpPacket instance and return it.
-		auto redPacket =
-		  new RtpPacket(newHeader, newHeaderExtension, ptr, newPayload_length, 0u, newSize);
+		// Fix the payload length.
+		this->payloadLength -= payloadOffset;
 
-		// Keep already set extension ids.
-		redPacket->midExtensionId               = this->midExtensionId;
-		redPacket->ridExtensionId               = this->ridExtensionId;
-		redPacket->rridExtensionId              = this->rridExtensionId;
-		redPacket->absSendTimeExtensionId       = this->absSendTimeExtensionId;
-		redPacket->transportWideCc01ExtensionId = this->transportWideCc01ExtensionId;
-		redPacket->frameMarking07ExtensionId    = this->frameMarking07ExtensionId; // Remove once RFC.
-		redPacket->frameMarkingExtensionId      = this->frameMarkingExtensionId;
-		redPacket->ssrcAudioLevelExtensionId    = this->ssrcAudioLevelExtensionId;
-		redPacket->videoOrientationExtensionId  = this->videoOrientationExtensionId;
-		// Assign the payload descriptor handler.
-		redPacket->payloadDescriptorHandler = this->payloadDescriptorHandler;
-		// Store allocated buffer.
-		redPacket->buffer = buffer;
+		// Fix the packet size.
+		this->size -= payloadOffset;
 
-		redPacket->SetPayloadPaddingFlag(false);
-		redPacket->SetMarker(true);
+		// Remove padding if present.
+		if (this->payloadPadding != 0u)
+		{
+			SetPayloadPaddingFlag(false);
 
-		return redPacket;
+			this->size -= size_t{ this->payloadPadding };
+			this->payloadPadding = 0u;
+		};
+
+		SetMarker(true);
+
+		return this;
 	}
 
 	bool RtpPacket::ProcessPayload(RTC::Codecs::EncodingContext* context, bool& marker)

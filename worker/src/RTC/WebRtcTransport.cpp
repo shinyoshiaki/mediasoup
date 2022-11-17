@@ -1,5 +1,5 @@
 #define MS_CLASS "RTC::WebRtcTransport"
-// #define MS_LOG_DEV_LEVEL 3
+#define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/WebRtcTransport.hpp"
 #include "ChannelMessageHandlers.hpp"
@@ -862,6 +862,8 @@ namespace RTC
 
 		const uint8_t* data = packet->GetData();
 		auto intLen         = static_cast<int>(packet->GetSize());
+
+		// packet->Dump();
 
 		if (!this->srtpSendSession->EncryptRtp(&data, &intLen))
 		{

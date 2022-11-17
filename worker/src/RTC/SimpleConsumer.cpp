@@ -1,5 +1,5 @@
 #define MS_CLASS "RTC::SimpleConsumer"
-// #define MS_LOG_DEV_LEVEL 3
+#define MS_LOG_DEV_LEVEL 3
 
 #include "RTC/SimpleConsumer.hpp"
 #include "ChannelMessageHandlers.hpp"
@@ -272,6 +272,31 @@ namespace RTC
 		// in the corresponding Producer.
 		if (this->supportedCodecPayloadTypes.find(payloadType) == this->supportedCodecPayloadTypes.end())
 		{
+			if (payloadType == 63)
+			{
+				MS_DEBUG_DEV("red received");
+				RtpPacket* redPacket = packet->RedDecode();
+
+				MS_DEBUG_DEV("red decoded");
+
+				if (redPacket == nullptr)
+				{
+					return;
+				}
+
+				MS_DEBUG_DEV(
+				  "red packet pt:%d ssrc:%d sequenceNumber:%d timestamp:%ld",
+				  redPacket->GetPayloadType(),
+				  redPacket->GetSsrc(),
+				  redPacket->GetSequenceNumber(),
+				  redPacket->GetTimestamp());
+
+				// Send the packet.
+				this->listener->OnConsumerSendRtpPacket(this, redPacket);
+
+				return;
+			}
+
 			MS_DEBUG_DEV("payload type not supported [payloadType:%" PRIu8 "]", payloadType);
 
 			return;
