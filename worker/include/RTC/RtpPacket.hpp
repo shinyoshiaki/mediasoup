@@ -594,6 +594,7 @@ namespace RTC
 		void RtxEncode(uint8_t payloadType, uint32_t ssrc, uint16_t seq);
 
 		bool RtxDecode(uint8_t payloadType, uint32_t ssrc);
+		RtpPacket* RedDecode();
 
 		void SetPayloadDescriptorHandler(RTC::Codecs::PayloadDescriptorHandler* payloadDescriptorHandler)
 		{

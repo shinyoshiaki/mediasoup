@@ -47,6 +47,7 @@ namespace RTC
 		{
 			UNSET = 0,
 			// Audio codecs:
+			RED  = 63,
 			OPUS = 100,
 			// Multi-channel Opus.
 			MULTIOPUS,
@@ -71,7 +72,6 @@ namespace RTC
 			ULPFEC,
 			X_ULPFECUC,
 			FLEXFEC,
-			RED
 		};
 
 	public:
@@ -104,7 +104,7 @@ namespace RTC
 
 		bool IsMediaCodec() const
 		{
-			return this->subtype >= Subtype(100) && this->subtype < (Subtype)300;
+			return this->subtype >= Subtype(63) && this->subtype < (Subtype)300;
 		}
 
 		bool IsComplementaryCodec() const

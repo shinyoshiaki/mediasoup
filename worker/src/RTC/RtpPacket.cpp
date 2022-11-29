@@ -3,6 +3,7 @@
 
 #include "RTC/RtpPacket.hpp"
 #include "Logger.hpp"
+#include <cstddef>
 #include <cstring>  // std::memcpy(), std::memmove(), std::memset()
 #include <iterator> // std::ostream_iterator
 #include <sstream>  // std::ostringstream
@@ -795,6 +796,102 @@ namespace RTC
 		}
 
 		return true;
+	}
+
+	RtpPacket* RtpPacket::RedDecode()
+	{
+		size_t kRedLastHeaderLength = 1;
+		size_t kRedHeaderLength     = 4;
+
+		const uint8_t* payload_ptr = this->payload;
+
+		struct RedHeader
+		{
+			uint8_t payload_type;
+			uint32_t timestamp;
+			size_t payload_length;
+			bool last;
+		};
+
+		std::vector<RedHeader> new_headers;
+		bool last_block   = false;
+		size_t sum_length = 0;
+
+		while (!last_block)
+		{
+			RedHeader new_header;
+			last_block = ((*payload_ptr & 0x80) == 0);
+
+			new_header.payload_type = payload_ptr[0] & 0x7F;
+			if (last_block)
+			{
+				// No more header data to read.
+				sum_length += kRedLastHeaderLength; // Account for RED header size.
+				new_header.timestamp      = this->header->timestamp;
+				new_header.payload_length = this->payloadLength - sum_length;
+				new_header.last           = true;
+				payload_ptr += kRedLastHeaderLength; // Advance to first payload byte.
+			}
+			else
+			{
+				// Bits 8 through 21 are timestamp offset.
+				int timestamp_offset = (payload_ptr[1] << 6) + ((payload_ptr[2] & 0xFC) >> 2);
+				new_header.timestamp = this->header->timestamp - timestamp_offset;
+				// Bits 22 through 31 are payload length.
+				new_header.payload_length = ((payload_ptr[2] & 0x03) << 8) + payload_ptr[3];
+				new_header.last           = false;
+
+				sum_length += new_header.payload_length;
+				sum_length += kRedHeaderLength; // Account for RED header size.
+
+				payload_ptr += kRedHeaderLength; // Advance to next RED header.
+			}
+			// Store in new list of packets.
+			if (new_header.payload_length > 0)
+			{
+				new_headers.push_back(new_header);
+			}
+		}
+
+		const auto& new_header = new_headers[1];
+
+		SetPayloadType(new_header.payload_type);
+
+		auto payloadOffset = 0u;
+		for (auto header : new_headers)
+		{
+			if (header.last == false)
+			{
+				payloadOffset += kRedHeaderLength;
+				payloadOffset += header.payload_length;
+			}
+			else
+			{
+				payloadOffset += kRedLastHeaderLength;
+			}
+		}
+
+		// Shift the payload to its original place.
+		std::memmove(this->payload, this->payload + payloadOffset, this->payloadLength - payloadOffset);
+
+		// Fix the payload length.
+		this->payloadLength -= payloadOffset;
+
+		// Fix the packet size.
+		this->size -= payloadOffset;
+
+		// Remove padding if present.
+		if (this->payloadPadding != 0u)
+		{
+			SetPayloadPaddingFlag(false);
+
+			this->size -= size_t{ this->payloadPadding };
+			this->payloadPadding = 0u;
+		};
+
+		SetMarker(true);
+
+		return this;
 	}
 
 	bool RtpPacket::ProcessPayload(RTC::Codecs::EncodingContext* context, bool& marker)
