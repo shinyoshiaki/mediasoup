@@ -803,10 +803,12 @@ export function getConsumableRtpParameters(
 		rtcp             : {}
 	};
 
-	for (const codec of params.codecs)
+	params.codecs.forEach((codec, i) => 
 	{
 		if (isRtxCodec(codec))
-			continue;
+		{
+			return; 
+		}
 
 		const consumableCodecPt = rtpMapping.codecs
 			.find((entry) => entry.payloadType === codec.payloadType)!
@@ -814,14 +816,14 @@ export function getConsumableRtpParameters(
 
 		let matchedCapCodec = caps.codecs!
 			.find((capCodec) => capCodec.preferredPayloadType === consumableCodecPt)!;
-		
+	
 		// hack for support RED
-		// he opus payload type assigned by the browser 
+		// opus payload type assigned by the browser 
 		// does not match the dynamic payload type in the router rtp capabilities
-		if (!matchedCapCodec)
+		if (i>0 && params.codecs[i-1].mimeType === 'audio/red' && !matchedCapCodec)
 		{
-			matchedCapCodec = caps.codecs!
-				.find((capCodec) => capCodec.mimeType === codec.mimeType) as RtpCodecCapability;
+			matchedCapCodec = utils.clone(caps.codecs!
+				.find((capCodec) => capCodec.mimeType === codec.mimeType) as RtpCodecCapability);
 			matchedCapCodec.preferredPayloadType = codec.payloadType;
 		}
 
@@ -856,7 +858,7 @@ export function getConsumableRtpParameters(
 
 			consumableParams.codecs.push(consumableRtxCodec);
 		}
-	}
+	});
 
 	for (const capExt of caps.headerExtensions!)
 	{
