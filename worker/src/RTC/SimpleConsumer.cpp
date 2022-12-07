@@ -276,23 +276,11 @@ namespace RTC
 		{
 			if (payloadType == 63)
 			{
-				MS_DEBUG_DEV("red received");
 				RtpPacket* redPacket = packet->RedDecode();
-
-				MS_DEBUG_DEV("red decoded");
-
 				if (redPacket == nullptr)
 				{
 					return;
 				}
-
-				MS_DEBUG_DEV(
-				  "red packet pt:%d ssrc:%d sequenceNumber:%d timestamp:%ld",
-				  redPacket->GetPayloadType(),
-				  redPacket->GetSsrc(),
-				  redPacket->GetSequenceNumber(),
-				  redPacket->GetTimestamp());
-
 				// Send the packet.
 				this->listener->OnConsumerSendRtpPacket(this, redPacket);
 
